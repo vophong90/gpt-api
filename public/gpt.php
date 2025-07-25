@@ -16,7 +16,7 @@ $apiKey = getenv("OPENAI_API_KEY");
 $ch = curl_init("https://api.openai.com/v1/chat/completions");
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-  "model" => "gpt-4o",
+  "model" => "gpt-4-1106-preview",
   "messages" => [
     ["role" => "user", "content" => $prompt]
   ],
