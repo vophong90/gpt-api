@@ -17,7 +17,7 @@ curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
 ]));
 curl_setopt($ch, CURLOPT_HTTPHEADER, [
   "Content-Type: application/json",
-  "Authorization: Bearer $apiKey"
+  "Authorization: Bearer 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"
 ]);
 
 $response = curl_exec($ch);
