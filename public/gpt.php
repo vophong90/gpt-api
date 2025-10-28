@@ -1,51 +1,88 @@
 <?php
-header("Access-Control-Allow-Origin: *");
+// ===== CORS =====
+$origin = $_SERVER['HTTP_ORIGIN'] ?? '*';
+header("Access-Control-Allow-Origin: $origin");
+header("Vary: Origin");
 header("Access-Control-Allow-Methods: POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type");
-header("Content-Type: application/json");
+header("Access-Control-Allow-Headers: Content-Type, Authorization");
+header("Access-Control-Allow-Credentials: true");
+header("Access-Control-Max-Age: 86400");
+header("Content-Type: application/json; charset=utf-8");
 
-if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
-  http_response_code(200);
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+  http_response_code(204);
   exit;
 }
 
-$input = json_decode(file_get_contents("php://input"), true);
-$prompt = $input["prompt"] ?? "";
-$overrideModel = $input["model"] ?? null;
+// ===== Input =====
+$raw    = file_get_contents("php://input") ?: '';
+$input  = json_decode($raw, true) ?: [];
+$action = $input['action'] ?? 'moderate';           // 'moderate' | 'chat'
+$prompt = $input['prompt'] ?? $input['input'] ?? '';
+$modelOverride = $input['model'] ?? null;
 
-$apiKey = getenv("OPENAI_API_KEY");
-$model  = $overrideModel ?: (getenv("OPENAI_MODEL") ?: "gpt-5"); // <-- đổi mặc định sang GPT-5
-
+// ===== API Key =====
+$apiKey = getenv("OPENAI_API_KEY") ?: ($_ENV['OPENAI_API_KEY'] ?? '');
 if (!$apiKey) {
   http_response_code(500);
   echo json_encode(["error" => "Missing OPENAI_API_KEY"]);
   exit;
 }
 
-$payload = [
-  "model" => $model,
-  "messages" => [
-    // Bạn có thể thêm system prompt mặc định ở đây nếu muốn chuẩn hoá đầu ra moderation, v.v.
-    ["role" => "user", "content" => $prompt]
-  ],
-  "temperature" => 0.2
-];
+// ===== Helper call =====
+function call_openai(string $path, array $payload, string $apiKey): void {
+  $ch = curl_init("https://api.openai.com/v1/$path");
+  curl_setopt_array($ch, [
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_POST           => true,
+    CURLOPT_POSTFIELDS     => json_encode($payload),
+    CURLOPT_HTTPHEADER     => [
+      "Content-Type: application/json",
+      "Authorization: Bearer $apiKey",
+      "Accept: application/json",
+    ],
+    CURLOPT_CONNECTTIMEOUT => 10,
+    CURLOPT_TIMEOUT        => 30,
+    CURLOPT_HTTP_VERSION   => CURL_HTTP_VERSION_1_1,
+  ]);
 
-$ch = curl_init("https://api.openai.com/v1/chat/completions");
-curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-curl_setopt($ch, CURLOPT_HTTPHEADER, [
-  "Content-Type: application/json",
-  "Authorization: Bearer $apiKey"
-]);
+  $resp   = curl_exec($ch);
+  $status = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 
-$response = curl_exec($ch);
-if ($response === false) {
-  http_response_code(502);
-  echo json_encode(["error" => "Upstream error: ".curl_error($ch)]);
+  if ($resp === false) {
+    $err = curl_error($ch);
+    curl_close($ch);
+    http_response_code(502);
+    echo json_encode(["error" => "Upstream error", "detail" => $err]);
+    exit;
+  }
   curl_close($ch);
+
+  http_response_code($status ?: 200);
+  header("X-OpenAI-Status: $status");
+  echo $resp;
   exit;
 }
-curl_close($ch);
 
-echo $response;
+// ===== Routes =====
+if ($action === 'chat') {
+  // Responses API (khuyến nghị cho model mới, ví dụ: gpt-5)
+  $model = $modelOverride ?: (getenv("OPENAI_MODEL") ?: "gpt-5"); // xem docs model :contentReference[oaicite:2]{index=2}
+  $payload = [
+    "model" => $model,
+    "input" => [
+      ["role" => "system", "content" => "You are a concise assistant."],
+      ["role" => "user",   "content" => $prompt],
+    ],
+    "temperature" => 0.2,
+  ];
+  call_openai('responses', $payload, $apiKey);
+} else {
+  // Moderation API (khuyến nghị dùng omni-moderation-latest)
+  $modModel = $modelOverride ?: "omni-moderation-latest";
+  $payload  = [
+    "model" => $modModel,
+    "input" => $prompt
+  ];
+  call_openai('moderations', $payload, $apiKey);
+}
