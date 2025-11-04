@@ -73,8 +73,7 @@ if ($action === 'chat') {
     "input" => [
       ["role" => "system", "content" => "You are a concise assistant."],
       ["role" => "user",   "content" => $prompt],
-    ],
-    "temperature" => 0.2,
+    ]
   ];
   call_openai('responses', $payload, $apiKey);
 } else {
