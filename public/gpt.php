@@ -41,8 +41,8 @@ function call_openai(string $path, array $payload, string $apiKey): void {
       "Authorization: Bearer $apiKey",
       "Accept: application/json",
     ],
-    CURLOPT_CONNECTTIMEOUT => 10,
-    CURLOPT_TIMEOUT        => 30,
+    CURLOPT_CONNECTTIMEOUT => 20,
+    CURLOPT_TIMEOUT        => 120,
     CURLOPT_HTTP_VERSION   => CURL_HTTP_VERSION_1_1,
   ]);
 
